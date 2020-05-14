@@ -27,6 +27,7 @@ namespace IdentityServer4.Quickstart.UI
     public class AccountController : Controller
     {
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly RoleManager<ApplicationRole> _roleManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly IIdentityServerInteractionService _interaction;
         private readonly IClientStore _clientStore;
@@ -35,6 +36,7 @@ namespace IdentityServer4.Quickstart.UI
 
         public AccountController(
             UserManager<ApplicationUser> userManager,
+            RoleManager<ApplicationRole> roleManager,
             SignInManager<ApplicationUser> signInManager,
             IIdentityServerInteractionService interaction,
             IClientStore clientStore,
@@ -42,6 +44,7 @@ namespace IdentityServer4.Quickstart.UI
             IEventService events)
         {
             _userManager = userManager;
+            _roleManager = roleManager;
             _signInManager = signInManager;
             _interaction = interaction;
             _clientStore = clientStore;
@@ -105,7 +108,7 @@ namespace IdentityServer4.Quickstart.UI
                     var result = await _signInManager.PasswordSignInAsync(model.Username, model.Password, model.RememberLogin, lockoutOnFailure: true);
                     if (result.Succeeded)
                     {
-                        await _events.RaiseAsync(new UserLoginSuccessEvent(user.UserName, user.Id, user.UserName));
+                        await _events.RaiseAsync(new UserLoginSuccessEvent(user.UserName, user.Id.ToString(), user.UserName));
 
                         // make sure the returnUrl is still valid, and if so redirect back to authorize endpoint or a local page
                         // the IsLocalUrl check is only necessary if you want to support additional local pages, otherwise IsValidReturnUrl is more strict
@@ -192,9 +195,9 @@ namespace IdentityServer4.Quickstart.UI
             // it doesn't expose an API to issue additional claims from the login workflow
             var principal = await _signInManager.CreateUserPrincipalAsync(user);
             additionalLocalClaims.AddRange(principal.Claims);
-            var name = principal.FindFirst(JwtClaimTypes.Name)?.Value ?? user.Id;
-            await _events.RaiseAsync(new UserLoginSuccessEvent(provider, providerUserId, user.Id, name));
-            await HttpContext.SignInAsync(user.Id, name, provider, localSignInProps, additionalLocalClaims.ToArray());
+            var name = principal.FindFirst(JwtClaimTypes.Name)?.Value ?? user.Id.ToString();
+            await _events.RaiseAsync(new UserLoginSuccessEvent(provider, providerUserId, user.Id.ToString(), name));
+            await HttpContext.SignInAsync(user.Id.ToString(), name, provider, localSignInProps, additionalLocalClaims.ToArray());
 
             // delete temporary cookie used during external authentication
             await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
@@ -633,7 +636,7 @@ namespace IdentityServer4.Quickstart.UI
 
         [HttpGet("{id}")]
         [Route("account/edit/{id}")]
-        [Authorize(Roles = "SuperAdmin")]
+        [Authorize(Policy = "SuperAdmin")]
         public async Task<IActionResult> Edit(string id, string returnUrl = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
@@ -649,14 +652,14 @@ namespace IdentityServer4.Quickstart.UI
                 return NotFound();
             }
 
-            return View(new EditViewModel(user.Id, user.LoginName, user.UserName, user.Email));
+            return View(new EditViewModel(user.Id.ToString(), user.LoginName, user.UserName, user.Email));
         }
 
 
         [HttpPost]
         [Route("account/edit/{id}")]
         [ValidateAntiForgeryToken]
-        [Authorize(Roles = "SuperAdmin")]
+        [Authorize(Policy = "SuperAdmin")]
         public async Task<IActionResult> Edit(EditViewModel model, string id, string returnUrl = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
@@ -698,7 +701,7 @@ namespace IdentityServer4.Quickstart.UI
 
         [HttpPost]
         [Route("account/delete/{id}")]
-        [Authorize(Roles = "SuperAdmin")]
+        [Authorize(Policy = "SuperAdmin")]
         public async Task<JsonResult> Delete(string id)
         {
             IdentityResult result = new IdentityResult();
@@ -778,7 +781,7 @@ namespace IdentityServer4.Quickstart.UI
                 // visit https://go.microsoft.com/fwlink/?LinkID=532713
                 var code = await _userManager.GeneratePasswordResetTokenAsync(user);
 
-                var callbackUrl = Url.ResetPasswordCallbackLink(user.Id, code, Request.Scheme);
+                var callbackUrl = Url.ResetPasswordCallbackLink(user.Id.ToString(), code, Request.Scheme);
 
 
                 var ResetPassword = $"Please reset your password by clicking here: <a href='{callbackUrl}'>link</a>";
@@ -871,6 +874,180 @@ namespace IdentityServer4.Quickstart.UI
             {
                 return RedirectToAction(nameof(HomeController.Index), "Home");
             }
+        }
+
+
+        // Role Manager
+
+
+
+        [HttpGet]
+        [Route("account/Roleregister")]
+        public IActionResult RoleRegister(string returnUrl = null)
+        {
+            ViewData["ReturnUrl"] = returnUrl;
+            return View();
+        }
+
+        [HttpPost]
+        [Route("account/Roleregister")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RoleRegister(RoleRegisterViewModel model, string returnUrl = null)
+        {
+            ViewData["ReturnUrl"] = returnUrl;
+            IdentityResult result = new IdentityResult();
+
+            if (ModelState.IsValid)
+            {
+                var roleItem = _roleManager.FindByNameAsync(model.RoleName).Result;
+
+                if (roleItem == null)
+                {
+
+                    var role = new ApplicationRole
+                    {
+                        Name = model.RoleName
+                    };
+
+
+                    result = await _roleManager.CreateAsync(role);
+
+                    if (result.Succeeded)
+                    {
+
+                        if (result.Succeeded)
+                        {
+                            // 可以直接登录
+                            //await _signInManager.SignInAsync(user, isPersistent: false);
+
+                            return RedirectToLocal(returnUrl);
+                        }
+                    }
+
+                }
+                else
+                {
+                    ModelState.AddModelError(string.Empty, $"{roleItem?.Name} already exists");
+
+                }
+
+                AddErrors(result);
+            }
+
+            // If we got this far, something failed, redisplay form
+            return View(model);
+        }
+
+
+        [HttpGet]
+        [Route("account/Roles")]
+        [Authorize]
+        public IActionResult Roles(string returnUrl = null)
+        {
+            ViewData["ReturnUrl"] = returnUrl;
+            var roles = _roleManager.Roles.Where(d => !d.IsDeleted).ToList();
+
+            return View(roles);
+        }
+
+
+
+        [HttpGet("{id}")]
+        [Route("account/Roleedit/{id}")]
+        [Authorize(Policy = "SuperAdmin")]
+        public async Task<IActionResult> RoleEdit(string id, string returnUrl = null)
+        {
+            ViewData["ReturnUrl"] = returnUrl;
+            if (id == null)
+            {
+                return NotFound();
+            }
+
+            var user = await _roleManager.FindByIdAsync(id);
+
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            return View(new RoleEditViewModel(user.Id.ToString(), user.Name));
+        }
+
+
+        [HttpPost]
+        [Route("account/Roleedit/{id}")]
+        [ValidateAntiForgeryToken]
+        [Authorize(Policy = "SuperAdmin")]
+        public async Task<IActionResult> RoleEdit(RoleEditViewModel model, string id, string returnUrl = null)
+        {
+            ViewData["ReturnUrl"] = returnUrl;
+            IdentityResult result = new IdentityResult();
+
+            if (ModelState.IsValid)
+            {
+                var roleItem = _roleManager.FindByIdAsync(model.Id).Result;
+
+                if (roleItem != null)
+                {
+                    roleItem.Name = model.RoleName;
+
+
+                    result = await _roleManager.UpdateAsync(roleItem);
+
+                    if (result.Succeeded)
+                    {
+                        return RedirectToLocal(returnUrl);
+                    }
+
+                }
+                else
+                {
+                    ModelState.AddModelError(string.Empty, $"{roleItem?.Name} no exist!");
+                }
+
+                AddErrors(result);
+            }
+
+            // If we got this far, something failed, redisplay form
+            return View(model);
+        }
+
+
+
+        [HttpPost]
+        [Route("account/Roledelete/{id}")]
+        [Authorize(Policy = "SuperAdmin")]
+        public async Task<JsonResult> RoleDelete(string id)
+        {
+            IdentityResult result = new IdentityResult();
+
+            if (ModelState.IsValid)
+            {
+                var roleItem = _roleManager.FindByIdAsync(id).Result;
+
+                if (roleItem != null)
+                {
+                    roleItem.IsDeleted = true;
+
+
+                    result = await _roleManager.UpdateAsync(roleItem);
+
+                    if (result.Succeeded)
+                    {
+                        return Json(result);
+                    }
+
+                }
+                else
+                {
+                    ModelState.AddModelError(string.Empty, $"{roleItem?.Name} no exist!");
+                }
+
+                AddErrors(result);
+            }
+
+            return Json(result.Errors);
+
         }
     }
 }

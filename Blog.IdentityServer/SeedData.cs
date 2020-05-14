@@ -12,19 +12,53 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Blog.Core.Common.Helper;
 using System.Collections.Generic;
+using System.Text;
 
 namespace Blog.IdentityServer
 {
     public class SeedData
     {
-        private static string GitJsonFileFormat = "https://github.com/anjoy8/Blog.Data.Share/raw/master/Blog.Core.Data.json/{0}.tsv";
+        private static string GitJsonFileFormat = "https://gitee.com/laozhangIsPhi/Blog.Data.Share/raw/master/BlogCore.Data.json/{0}.tsv";
 
         public static void EnsureSeedData(IServiceProvider serviceProvider)
         {
-            //1.dotnet ef migrations add InitialIdentityServerPersistedGrantDbMigration -c PersistedGrantDbContext -o Data/Migrations/IdentityServer/PersistedGrantDb
-            //2.dotnet ef migrations add InitialIdentityServerConfigurationDbMigration -c ConfigurationDbContext -o Data/Migrations/IdentityServer/ConfigurationDb
-            //3.dotnet ef migrations add AppDbMigration -c ApplicationDbContext -o Data
-            //4.dotnet run /seed
+            /*
+             * mysql和sqlserver的迁移操作步骤一致，不过本项目已经迁移好，在Data文件夹下：
+             * msql使用MigrationsMySql文件夹下的迁移记录，卸载另一个Migrations文件夹
+             * sqlserver使用Migrations文件夹下的迁移记录，卸载另一个MigrationsMySql文件夹
+             * 
+             * 当然你也可以都删掉，自己重新做迁移。
+             * 迁移完成后，执行dotnet run /seed
+             *  1、PM> add-migration InitialIdentityServerPersistedGrantDbMigrationMysql -c PersistedGrantDbContext -o Data/MigrationsMySql/IdentityServer/PersistedGrantDb 
+                Build started...
+                Build succeeded.
+                To undo this action, use Remove-Migration.
+                2、PM> update-database -c PersistedGrantDbContext
+                Build started...
+                Build succeeded.
+                Applying migration '20200509165052_InitialIdentityServerPersistedGrantDbMigrationMysql'.
+                Done.
+                3、PM> add-migration InitialIdentityServerConfigurationDbMigrationMysql -c ConfigurationDbContext -o Data/MigrationsMySql/IdentityServer/ConfigurationDb
+                Build started...
+                Build succeeded.
+                To undo this action, use Remove-Migration.
+                4、PM> update-database -c ConfigurationDbContext
+                Build started...
+                Build succeeded.
+                Applying migration '20200509165153_InitialIdentityServerConfigurationDbMigrationMysql'.
+                Done.
+                5、PM> add-migration AppDbMigration -c ApplicationDbContext -o Data/MigrationsMySql
+                Build started...
+                Build succeeded.
+                To undo this action, use Remove-Migration.
+                6、PM> update-database -c ApplicationDbContext
+                Build started...
+                Build succeeded.
+                Applying migration '20200509165505_AppDbMigration'.
+                Done.
+             * 
+             */
+
             Console.WriteLine("Seeding database...");
 
             using (var scope = serviceProvider.GetRequiredService<IServiceScopeFactory>().CreateScope())
@@ -42,51 +76,61 @@ namespace Blog.IdentityServer
                     context.Database.Migrate();
 
                     var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                    var roleMgr = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
 
                     var BlogCore_Users = JsonHelper.ParseFormByJson<List<sysUserInfo>>(GetNetData.Get(string.Format(GitJsonFileFormat, "sysUserInfo")));
                     var BlogCore_Roles = JsonHelper.ParseFormByJson<List<Role>>(GetNetData.Get(string.Format(GitJsonFileFormat, "Role")));
                     var BlogCore_UserRoles = JsonHelper.ParseFormByJson<List<UserRole>>(GetNetData.Get(string.Format(GitJsonFileFormat, "UserRole")));
 
-                    foreach (var item in BlogCore_Users)
+                    foreach (var user in BlogCore_Users)
                     {
-                        if (item == null || item.uLoginName == null)
+                        if (user == null || user.uLoginName == null)
                         {
                             continue;
                         }
-                        var userItem = userMgr.FindByNameAsync(item.uLoginName).Result;
-                        var rid = BlogCore_UserRoles.FirstOrDefault(d => d.UserId == item.uID)?.RoleId;
-                        var rName = BlogCore_Roles.FirstOrDefault(d => d.Id == rid)?.Name;
+                        var userItem = userMgr.FindByNameAsync(user.uLoginName).Result;
+                        var rid = BlogCore_UserRoles.FirstOrDefault(d => d.UserId == user.uID)?.RoleId;
+                        var rName = BlogCore_Roles.Where(d => d.Id == rid).Select(d=>d.Id).ToList();
+                        var roleName = BlogCore_Roles.FirstOrDefault(d => d.Id == rid)?.Name;
 
                         if (userItem == null)
                         {
-                            if (rid > 0 && !string.IsNullOrEmpty(rName))
+                            if (rid > 0 && rName.Count>0)
                             {
                                 userItem = new ApplicationUser
                                 {
-                                    UserName = item.uLoginName,
-                                    LoginName = item.uRealName,
-                                    sex = item.sex,
-                                    age = item.age,
-                                    birth = item.birth,
-                                    addr = item.addr,
-                                    tdIsDelete = item.tdIsDelete
-
+                                    UserName = user.uLoginName,
+                                    LoginName = user.uRealName,
+                                    sex = user.sex,
+                                    age = user.age,
+                                    birth = user.birth,
+                                    addr = user.addr,
+                                    tdIsDelete = user.tdIsDelete,
+                                    Email = user.uLoginName + "@blog.com",
+                                    EmailConfirmed=true,
+                                    RealName=user.uRealName,
                                 };
 
                                 //var result = userMgr.CreateAsync(userItem, "BlogIdp123$" + item.uLoginPWD).Result;
 
-                                // 因为导入的密码是 MD5密文，所以这里统一都用初始密码了
+                                // 因为导入的密码是 MD5密文，所以这里统一都用初始密码了,可以先登录，然后修改密码
                                 var result = userMgr.CreateAsync(userItem, "BlogIdp123$InitPwd").Result;
                                 if (!result.Succeeded)
                                 {
                                     throw new Exception(result.Errors.First().Description);
                                 }
 
-                                result = userMgr.AddClaimsAsync(userItem, new Claim[]{
-                            new Claim(JwtClaimTypes.Name, item.uRealName),
-                            new Claim(JwtClaimTypes.Email, $"{item.uLoginName}@email.com"),
-                            new Claim(JwtClaimTypes.Role, rName)
-                        }).Result;
+                                var claims = new List<Claim>{
+                                    new Claim(JwtClaimTypes.Name, user.uRealName),
+                                    new Claim(JwtClaimTypes.Email, $"{user.uLoginName}@email.com"),
+                                    new Claim("rolename", roleName),
+                                };
+
+                                claims.AddRange(rName.Select(s => new Claim(JwtClaimTypes.Role, s.ToString())));
+
+
+                                result = userMgr.AddClaimsAsync(userItem,claims ).Result;
+
 
                                 if (!result.Succeeded)
                                 {
@@ -97,13 +141,52 @@ namespace Blog.IdentityServer
                             }
                             else
                             {
-                                Console.WriteLine($"{item?.uLoginName} doesn't have a corresponding role.");
+                                Console.WriteLine($"{user?.uLoginName} doesn't have a corresponding role.");
                             }
                         }
                         else
                         {
                             Console.WriteLine($"{userItem?.UserName} already exists");
                         }
+
+                    }
+
+                    foreach (var role in BlogCore_Roles)
+                    {
+                        if (role == null || role.Name == null)
+                        {
+                            continue;
+                        }
+                        var roleItem = roleMgr.FindByNameAsync(role.Name).Result;
+
+                        if (roleItem != null)
+                        {
+                            role.Name = role.Name + Guid.NewGuid().ToString("N");
+                        }
+
+                        roleItem = new ApplicationRole
+                        {
+                            CreateBy = role.CreateBy,
+                            Description = role.Description,
+                            IsDeleted = role.IsDeleted != null ? (bool)role.IsDeleted : true,
+                            CreateId = role.CreateId,
+                            CreateTime = role.CreateTime,
+                            Enabled = role.Enabled,
+                            Name = role.Name,
+                            OrderSort = role.OrderSort,
+                        };
+
+                        var result = roleMgr.CreateAsync(roleItem).Result;
+                        if (!result.Succeeded)
+                        {
+                            throw new Exception(result.Errors.First().Description);
+                        }
+
+                        if (!result.Succeeded)
+                        {
+                            throw new Exception(result.Errors.First().Description);
+                        }
+                        Console.WriteLine($"{roleItem?.Name} created");//AspNetUserClaims 表
 
                     }
 

@@ -8,18 +8,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Blog.IdentityServer.Data;
 using Blog.IdentityServer.Models;
 using System.Reflection;
-using Microsoft.IdentityModel.Tokens;
 using System.IO;
-using IdentityServer4.Quickstart.UI;
+using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Http;
+using Blog.IdentityServer.Extensions;
+using Microsoft.AspNetCore.Authorization;
+using Blog.IdentityServer.Authorization;
 
 namespace Blog.IdentityServer
 {
     public class Startup
     {
         public IConfiguration Configuration { get; }
-        public IHostingEnvironment Environment { get; }
+        public IWebHostEnvironment Environment { get; }
 
-        public Startup(IConfiguration configuration, IHostingEnvironment environment)
+        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
         {
             Configuration = configuration;
             Environment = environment;
@@ -27,20 +30,37 @@ namespace Blog.IdentityServer
 
         public void ConfigureServices(IServiceCollection services)
         {
-            string connectionStringFile = Configuration.GetConnectionString("DefaultConnection");
-            var connectionString = File.Exists(connectionStringFile) ? File.ReadAllText(connectionStringFile).Trim() : "";
+            services.AddSameSiteCookiePolicy();
+
+            string connectionStringFile = Configuration.GetConnectionString("DefaultConnection_file");
+            var connectionString = File.Exists(connectionStringFile) ? File.ReadAllText(connectionStringFile).Trim() : Configuration.GetConnectionString("DefaultConnection");
             if (connectionString == "")
             {
                 throw new Exception("数据库配置异常");
             }
             var migrationsAssembly = typeof(Startup).GetTypeInfo().Assembly.GetName().Name;
 
-            services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseSqlServer(connectionString));
+            // sqlserver
+            //services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
-            services.AddIdentity<ApplicationUser, IdentityRole>()
+            // mysql
+            services.AddDbContext<ApplicationDbContext>(options => options.UseMySql(connectionString));
+
+            services.AddIdentity<ApplicationUser, ApplicationRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>()
                 .AddDefaultTokenProviders();
+
+            services.ConfigureApplicationCookie(options =>
+            {
+                options.LoginPath = new PathString("/oauth2/authorize");
+            });
+
+
+            //配置session的有效时间,单位秒
+            services.AddSession(options =>
+            {
+                options.IdleTimeout = TimeSpan.FromSeconds(30);
+            });
 
             services.AddMvc();
 
@@ -56,68 +76,83 @@ namespace Blog.IdentityServer
                     options.Events.RaiseInformationEvents = true;
                     options.Events.RaiseFailureEvents = true;
                     options.Events.RaiseSuccessEvents = true;
+                    options.IssuerUri = "https://ids.neters.club";
+                    options.PublicOrigin = "https://ids.neters.club";
+                    options.UserInteraction = new IdentityServer4.Configuration.UserInteractionOptions
+                    {
+                        LoginUrl = "/oauth2/authorize",//登录地址  
+                    };
                 })
 
-                //// in-memory, code config
-                //.AddTestUsers(TestUsers.Users)
-                //.AddInMemoryIdentityResources(Config.GetIdentityResources())
-                //.AddInMemoryApiResources(Config.GetApiResources())
-                //.AddInMemoryClients(Config.GetClients())
+                // 自定义验证，可以不走Identity
+                //.AddResourceOwnerValidator<ResourceOwnerPasswordValidator>()
+                .AddExtensionGrantValidator<WeiXinOpenGrantValidator>()
 
-                //// in-memory, json config
-                //.AddTestUsers(TestUsers.Users)
-                //.AddInMemoryIdentityResources(Configuration.GetSection("IdentityResources"))
-                //.AddInMemoryApiResources(Configuration.GetSection("ApiResources"))
-                //.AddInMemoryClients(Configuration.GetSection("clients"))
-
-                // in-sqlserver
+                // 数据库模式
                 .AddAspNetIdentity<ApplicationUser>()
+
                 // this adds the config data from DB (clients, resources)
                 .AddConfigurationStore(options =>
                 {
-                    options.ConfigureDbContext = b =>
-                        b.UseSqlServer(connectionString,
-                            sql => sql.MigrationsAssembly(migrationsAssembly));
+                    //options.ConfigureDbContext = b => b.UseSqlServer(connectionString, sql => sql.MigrationsAssembly(migrationsAssembly));
+                    options.ConfigureDbContext = b => b.UseMySql(connectionString, sql => sql.MigrationsAssembly(migrationsAssembly));
                 })
                 // this adds the operational data from DB (codes, tokens, consents)
                 .AddOperationalStore(options =>
                 {
-                    options.ConfigureDbContext = b =>
-                        b.UseSqlServer(connectionString,
-                            sql => sql.MigrationsAssembly(migrationsAssembly));
+                    //options.ConfigureDbContext = b => b.UseSqlServer(connectionString, sql => sql.MigrationsAssembly(migrationsAssembly));
+                    options.ConfigureDbContext = b => b.UseMySql(connectionString, sql => sql.MigrationsAssembly(migrationsAssembly));
 
                     // this enables automatic token cleanup. this is optional.
                     options.EnableTokenCleanup = true;
                     // options.TokenCleanupInterval = 15; // frequency in seconds to cleanup stale grants. 15 is useful during debugging
                 });
 
+            builder.AddDeveloperSigningCredential();
             if (Environment.IsDevelopment())
             {
                 builder.AddDeveloperSigningCredential();
             }
-            else
-            {
-                throw new Exception("need to configure key material");
-            }
 
-            services.AddAuthentication();
+
+            services.AddAuthorization(options =>
+            {
+                options.AddPolicy("Admin", policy => policy.Requirements.Add(new ClaimRequirement("rolename", "Admin")));
+                options.AddPolicy("SuperAdmin", policy => policy.Requirements.Add(new ClaimRequirement("rolename", "SuperAdmin")));
+            });
+
+            services.AddSingleton<IAuthorizationHandler, ClaimsRequirementHandler>();
+
         }
 
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            app.UseCookiePolicy();
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
-                app.UseDatabaseErrorPage();
+                //app.UseDatabaseErrorPage();
             }
             else
             {
                 app.UseExceptionHandler("/Home/Error");
             }
 
+            app.UseSession();
             app.UseStaticFiles();
+            app.UseRouting();
             app.UseIdentityServer();
-            app.UseMvcWithDefaultRoute();
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.UseEndpoints(endpoints =>
+           {
+               endpoints.MapControllerRoute(
+                   name: "default",
+                   pattern: "{controller=Home}/{action=Index}/{id?}");
+           });
         }
     }
 }
