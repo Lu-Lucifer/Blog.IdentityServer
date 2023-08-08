@@ -4,19 +4,42 @@
 &nbsp;
 &nbsp;
 
+## Info 
+1、项目支持SqlServer和Mysql，默认Mysql，在配置文件中可以设置："IsMysql": true,  
+2、如果用mysql，直接执行update-database即可，迁移文件在data下的MigrationsMySql文件夹；    
+3、如果不想用自带的迁移文件，先删掉data下的MigrationsMySql文件夹，然后执行（具体步骤在SeedData.cs中）；  
+
 ## 给个星星! ⭐️
 如果你喜欢这个项目或者它帮助你, 请给 Star~（辛苦星咯）
 
 *********************************************************
 
+  
+## 售后服务与支持  
+
+鼓励作者，简单打赏，入微信群，随时随地解答我框架中（NetCore、Vue、DDD、IdentityServer4等）的疑难杂症。     
+注意主要是帮忙解决bug和思路，不会远程授课，但是可以适当发我代码，我帮忙调试，       
+打赏的时候，备注自己的微信号，我拉你进群，两天内没回应，QQ私聊我（3143422472）；   
+
+[赞赏列表](http://apk.neters.club/.doc/Contribution/)  
+
+ 
+<img src="http://apk.neters.club/laozhangisphigood.jpg" alt="赞赏码" width="300" >
+[图片若加载不出来，点这里](http://apk.neters.club/laozhangisphigood.jpg)
+
+  <ul>
+<li></li>
+<li><a id="post_title_link_10529982" href="https://www.bilibili.com/video/BV1vC4y1p7Za?p=14">前端Blog.Admin-后端Blog.Core-认证中心(本项目) 快速启动 </a></li>
+<li></li>
+</ul>
+
 ## Tips：
 ```
  /*
-  * mysql和sqlserver的迁移操作步骤一致，不过本项目已经迁移好，在Data文件夹下：
-  * msql使用MigrationsMySql文件夹下的迁移记录，卸载另一个文件夹
-  * sqlserver使用Migrations文件夹下的迁移记录，卸载另一个文件夹
+  * 本项目同时支持Mysql和Sqlserver，我一直使用的是Mysql，所以Mysql的迁移文件已经配置好，在Data文件夹下，
+  * 直接执行update-database xxxx,那三步即可。如果你使用sqlserver，可以先从迁移开始，下边有步骤
   * 
-  * 当然你也可以都删掉，自己重新做迁移。
+  * 当然你也可以把Data文件夹除了ApplicationDbContext.cs文件外都删掉，自己重新做迁移。
   * 迁移完成后，执行dotnet run /seed
   *  1、PM> add-migration InitialIdentityServerPersistedGrantDbMigrationMysql -c PersistedGrantDbContext -o Data/MigrationsMySql/IdentityServer/PersistedGrantDb 
      Build started...
@@ -68,6 +91,21 @@
 <li><a class="entry" href="https://www.cnblogs.com/laozhang-is-phi/p/11844395.html" target="_blank">05 ║ 多项目集成统一认证中心的思考</a></li>
 <li><a class="entry" href="https://www.cnblogs.com/laozhang-is-phi/p/rolemanager-one.html" target="_blank">06 ║ 统一角色管理（上）</a>&nbsp;</li>
 <li><a class="entry" href="https://www.cnblogs.com/laozhang-is-phi/p/vue-core-ids.html" target="_blank">07 ║ 客户端、服务端、授权中心全线打通</a>&nbsp;</li>
+<li></li>
+</ul>
+
+
+
+微信公众号：https://mvp.neters.club/MVP_ids4_2020/2020  
+
+<ul>
+<li><a id="post_title_link_10483922" href="http://apk.neters.club/api/Blog/GoUrl?id=133">【Ids4实战】分模块保护资源API</a></li>
+<li><a id="post_title_link_10529982" href="http://apk.neters.club/api/Blog/GoUrl?id=130">【Ids4实战】最全的 v4 版本升级指南</a></li>
+<li><a id="post_title_link_10660403" href="http://apk.neters.club/api/Blog/GoUrl?id=74">【Ids4实战】深究配置——用户信息操作篇</a></li>
+<li><a id="post_title_link_10911438" href="http://apk.neters.club/api/Blog/GoUrl?id=73">【实战 Ids4】║ 认证中心之内部加权</a></li>
+<li><a class="entry" href="http://apk.neters.club/api/Blog/GoUrl?id=72" target="_blank">【实战 Ids4】║ 控制台密码模式搭配Ocelot网关</a></li>
+<li><a class="entry" href="http://apk.neters.club/api/Blog/GoUrl?id=71" target="_blank">【实战 Ids4】║ 在Swagger中调试认证授权中心</a>&nbsp;</li>
+<li><a class="entry" href="http://apk.neters.club/api/Blog/GoUrl?id=70" target="_blank">【实战 Ids4】║ 又一个项目迁移完成（MVC）</a>&nbsp;</li>
 <li></li>
 </ul>
 
